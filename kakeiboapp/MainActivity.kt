@@ -343,13 +343,14 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
     var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
     var showDailyDetailDialog by remember { mutableStateOf(false) }
 
+    // ★追加: 年月選択ダイアログの表示状態を管理する変数
+    var showYearMonthPicker by remember { mutableStateOf(false) }
+
     val transactions by viewModel.getTransactionsByMonth(
         currentMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
     ).collectAsState(initial = emptyList<Transaction>())
 
     val aggregateOnUsage by viewModel.aggregateCreditOnUsageDate.collectAsState()
-
-    // ★追加: ViewModelから最新の祝日データを取得
     val holidays by viewModel.holidays.collectAsState()
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
@@ -359,15 +360,23 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
             verticalAlignment = Alignment.CenterVertically
         ) {
             Button(onClick = { currentMonth = currentMonth.minusMonths(1) }) { Text("先月") }
+
+            // ★修正: タップできるように clickable を追加し、余白を調整
             Text(
                 text = "${currentMonth.year}年 ${currentMonth.monthValue}月",
                 fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clickable { showYearMonthPicker = true } // タップでダイアログを開く
+                    .padding(8.dp) // タップしやすくするための余白
             )
+
             Button(onClick = { currentMonth = currentMonth.plusMonths(1) }) { Text("来月") }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+
+// ... (ここから下の「色分けの凡例」以降のコードはすべてそのまま残します) ...
 
         // 色分けの凡例（ガイド）
         Row(
@@ -508,6 +517,18 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
             transactions = transactions.filter { it.date == selectedDate.toString() },
             viewModel = viewModel,
             onDismiss = { showDailyDetailDialog = false }
+        )
+    }
+
+    //年月選択ダイアログの呼び出し
+    if (showYearMonthPicker) {
+        YearMonthPickerDialog(
+            initialYearMonth = currentMonth,
+            onDismissRequest = { showYearMonthPicker = false },
+            onYearMonthSelected = { selected ->
+                currentMonth = selected // 選択された年月にカレンダーを更新
+                showYearMonthPicker = false
+            }
         )
     }
 }
@@ -798,4 +819,88 @@ fun List<Transaction>.calculateTotalExpense(aggregateOnUsage: Boolean): Int {
             !(it.category == "クレジット" && !it.isCreditPayment) // 引き落とし日合算なら、利用データは合計から除外する
         }
     }.sumOf { it.amount }
+}
+
+// === 年月選択用スクロールダイアログ ===
+@Composable
+fun YearMonthPickerDialog(
+    initialYearMonth: YearMonth,
+    onDismissRequest: () -> Unit,
+    onYearMonthSelected: (YearMonth) -> Unit
+) {
+    var selectedYear by remember { mutableStateOf(initialYearMonth.year) }
+    var selectedMonth by remember { mutableStateOf(initialYearMonth.monthValue) }
+
+    val years = (2000..2050).toList() // 選択できる年の範囲
+    val months = (1..12).toList()
+
+    // 開いた時に、現在の年月が真ん中付近にスクロールされた状態にする
+    val yearListState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = maxOf(0, years.indexOf(initialYearMonth.year) - 2)
+    )
+    val monthListState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = maxOf(0, months.indexOf(initialYearMonth.monthValue) - 2)
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("年月を選択", fontWeight = FontWeight.Bold) },
+        text = {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                // 年のスクロールリスト
+                LazyColumn(
+                    state = yearListState,
+                    modifier = Modifier.weight(1f).height(200.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    items(years) { year ->
+                        val isSelected = year == selectedYear
+                        Text(
+                            text = "${year}年",
+                            fontSize = if (isSelected) 22.sp else 16.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) Color.Blue else Color.Gray,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedYear = year }
+                                .padding(vertical = 12.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                // 月のスクロールリスト
+                LazyColumn(
+                    state = monthListState,
+                    modifier = Modifier.weight(1f).height(200.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    items(months) { month ->
+                        val isSelected = month == selectedMonth
+                        Text(
+                            text = "${month}月",
+                            fontSize = if (isSelected) 22.sp else 16.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) Color.Blue else Color.Gray,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedMonth = month }
+                                .padding(vertical = 12.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onYearMonthSelected(YearMonth.of(selectedYear, selectedMonth)) }) {
+                Text("決定")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("キャンセル")
+            }
+        }
+    )
 }
