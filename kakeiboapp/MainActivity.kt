@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +24,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -48,13 +49,13 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,56 +77,28 @@ import com.example.kakeiboapp.data.Category
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 
-// 画面の種類を定義
-enum class ScreenType {
-    Calendar, YearlySummary, Settings
-}
+enum class ScreenType { Calendar, YearlySummary, Settings }
 
 class MainActivity : ComponentActivity() {
     private val viewModel: TransactionViewModel by viewModels()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent {
-            KakeiboAppTheme {
-                MainAppScreen(viewModel = viewModel)
-            }
-        }
+        setContent { KakeiboAppTheme { MainAppScreen(viewModel = viewModel) } }
     }
 }
 
-// === メイン画面（タブ切り替えの土台） ===
 @Composable
 fun MainAppScreen(viewModel: TransactionViewModel) {
     var currentScreen by remember { mutableStateOf(ScreenType.Calendar) }
-
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Filled.DateRange, contentDescription = "カレンダー") },
-                    label = { Text("カレンダー") },
-                    selected = currentScreen == ScreenType.Calendar,
-                    onClick = { currentScreen = ScreenType.Calendar }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Assessment, contentDescription = "年間収支") },
-                    label = { Text("年間収支") },
-                    selected = currentScreen == ScreenType.YearlySummary,
-                    onClick = { currentScreen = ScreenType.YearlySummary }
-                )
-                // 設定タブを追加
-                NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Settings, contentDescription = "設定") },
-                    label = { Text("設定") },
-                    selected = currentScreen == ScreenType.Settings,
-                    onClick = { currentScreen = ScreenType.Settings }
-                )
+                NavigationBarItem(icon = { Icon(Icons.Filled.DateRange, "カレンダー") }, label = { Text("カレンダー") }, selected = currentScreen == ScreenType.Calendar, onClick = { currentScreen = ScreenType.Calendar })
+                NavigationBarItem(icon = { Icon(Icons.Filled.Assessment, "年間収支") }, label = { Text("年間収支") }, selected = currentScreen == ScreenType.YearlySummary, onClick = { currentScreen = ScreenType.YearlySummary })
+                NavigationBarItem(icon = { Icon(Icons.Filled.Settings, "設定") }, label = { Text("設定") }, selected = currentScreen == ScreenType.Settings, onClick = { currentScreen = ScreenType.Settings })
             }
         }
     ) { innerPadding ->
@@ -133,7 +106,7 @@ fun MainAppScreen(viewModel: TransactionViewModel) {
             when (currentScreen) {
                 ScreenType.Calendar -> CalendarScreen(viewModel = viewModel)
                 ScreenType.YearlySummary -> YearlySummaryScreen(viewModel = viewModel)
-                ScreenType.Settings -> SettingsScreen(viewModel = viewModel) // 設定画面の呼び出し
+                ScreenType.Settings -> SettingsScreen(viewModel = viewModel)
             }
         }
     }
@@ -143,7 +116,6 @@ fun MainAppScreen(viewModel: TransactionViewModel) {
 fun YearlySummaryScreen(viewModel: TransactionViewModel) {
     var currentYear by remember { mutableStateOf(LocalDate.now().year) }
     val transactions by viewModel.getTransactionsByYear(currentYear.toString()).collectAsState(initial = emptyList<Transaction>())
-    // ★追加: 設定値を取得
     val aggregateOnUsage by viewModel.aggregateCreditOnUsageDate.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -154,9 +126,8 @@ fun YearlySummaryScreen(viewModel: TransactionViewModel) {
         }
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ★修正: 新しい計算ルールを適用
         val totalIncome = transactions.filter { !it.isExpense }.sumOf { it.amount }
-        val totalExpense = transactions.calculateTotalExpense(aggregateOnUsage) // 重複なし
+        val totalExpense = transactions.calculateTotalExpense(aggregateOnUsage)
         val balance = totalIncome - totalExpense
         val balanceColor = if (balance >= 0) Color.Blue else Color.Red
 
@@ -181,10 +152,8 @@ fun YearlySummaryScreen(viewModel: TransactionViewModel) {
                 val month = index + 1
                 val monthString = "%04d-%02d".format(currentYear, month)
                 val monthTransactions = transactions.filter { it.date.startsWith(monthString) }
-
-                // ★修正: 新しい計算ルールを適用
                 val mIncome = monthTransactions.filter { !it.isExpense }.sumOf { it.amount }
-                val mExpense = monthTransactions.calculateTotalExpense(aggregateOnUsage) // 重複なし
+                val mExpense = monthTransactions.calculateTotalExpense(aggregateOnUsage)
 
                 if (mIncome > 0 || mExpense > 0) {
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -222,13 +191,9 @@ fun SettingsScreen(viewModel: TransactionViewModel) {
     var startMonth by remember { mutableStateOf(LocalDate.now().monthValue.toString()) }
 
     val subs by viewModel.subscriptions.collectAsState()
-
-    // 解約・修正ダイアログ用のステート
     var editTerminateSubId by remember { mutableStateOf<Int?>(null) }
     var termYear by remember { mutableStateOf(LocalDate.now().year.toString()) }
     var termMonth by remember { mutableStateOf(LocalDate.now().monthValue.toString()) }
-
-    // ★追加: 基本情報編集ダイアログ用のステート
     var editSubId by remember { mutableStateOf<Int?>(null) }
     var editSubName by remember { mutableStateOf("") }
     var editSubAmount by remember { mutableStateOf("") }
@@ -237,32 +202,20 @@ fun SettingsScreen(viewModel: TransactionViewModel) {
     var editStartYear by remember { mutableStateOf(LocalDate.now().year.toString()) }
     var editStartMonth by remember { mutableStateOf(LocalDate.now().monthValue.toString()) }
 
-    // 解約・修正ダイアログ
     if (editTerminateSubId != null) {
         val targetSub = subs.find { it.id == editTerminateSubId }
         val isAlreadyTerminated = targetSub?.endYearMonth != null
-
         AlertDialog(
             onDismissRequest = { editTerminateSubId = null },
-            title = { Text(if (isAlreadyTerminated) "解約設定の修正" else "サブスクの解約", fontWeight = FontWeight.Bold) },
+            title = { Text(if (isAlreadyTerminated) "解解約設定の修正" else "サブスクの解約", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("支払いを終了した（または終了する）年月を入力してください。\n過去の履歴は残したまま、この月を最後にカレンダーに表示されなくなります。")
+                    Text("支払いを終了した（または終了する）年月を入力してください。")
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = termYear,
-                            onValueChange = { termYear = it },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(80.dp)
-                        )
+                        OutlinedTextField(value = termYear, onValueChange = { termYear = it }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(80.dp))
                         Text(" 年 ")
-                        OutlinedTextField(
-                            value = termMonth,
-                            onValueChange = { termMonth = it },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.width(60.dp)
-                        )
+                        OutlinedTextField(value = termMonth, onValueChange = { termMonth = it }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(60.dp))
                         Text(" 月")
                     }
                 }
@@ -277,19 +230,13 @@ fun SettingsScreen(viewModel: TransactionViewModel) {
             },
             dismissButton = {
                 Row {
-                    if (isAlreadyTerminated) {
-                        TextButton(onClick = {
-                            viewModel.terminateSubscription(editTerminateSubId!!, null)
-                            editTerminateSubId = null
-                        }) { Text("解約取消", color = Color.Red) }
-                    }
+                    if (isAlreadyTerminated) { TextButton(onClick = { viewModel.terminateSubscription(editTerminateSubId!!, null); editTerminateSubId = null }) { Text("解約取消", color = Color.Red) } }
                     TextButton(onClick = { editTerminateSubId = null }) { Text("キャンセル") }
                 }
             }
         )
     }
 
-    // ★追加: 基本情報編集ダイアログ
     if (editSubId != null) {
         AlertDialog(
             onDismissRequest = { editSubId = null },
@@ -332,41 +279,28 @@ fun SettingsScreen(viewModel: TransactionViewModel) {
                     val amt = editSubAmount.toIntOrNull() ?: 0
                     val y = editStartYear.toIntOrNull() ?: LocalDate.now().year
                     val m = editStartMonth.toIntOrNull() ?: LocalDate.now().monthValue
-                    val formattedStart = String.format("%04d-%02d", y, m)
-
                     if (editSubName.isNotBlank() && amt > 0) {
-                        viewModel.updateSubscription(editSubId!!, editSubName, amt, editIsYearlySub, if(editIsYearlySub) editSubBillingMonth else 1, formattedStart)
+                        viewModel.updateSubscription(editSubId!!, editSubName, amt, editIsYearlySub, if(editIsYearlySub) editSubBillingMonth else 1, String.format("%04d-%02d", y, m))
                         editSubId = null
                     }
                 }) { Text("保存する") }
             },
-            dismissButton = {
-                TextButton(onClick = { editSubId = null }) { Text("キャンセル") }
-            }
+            dismissButton = { TextButton(onClick = { editSubId = null }) { Text("キャンセル") } }
         )
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(scrollState)) {
-
         Text("システム設定", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text("クレジット支出の計算", fontSize = 16.sp)
-                Text(if (aggregateOnUsage) "「利用日」の合計に含める" else "「引き落とし日」の合計に含める", fontSize = 12.sp, color = Color.Gray)
-            }
+            Column { Text("クレジット支出の計算", fontSize = 16.sp); Text(if (aggregateOnUsage) "「利用日」の合計に含める" else "「引き落とし日」の合計に含める", fontSize = 12.sp, color = Color.Gray) }
             Switch(checked = aggregateOnUsage, onCheckedChange = { viewModel.setAggregateCreditOnUsageDate(it) })
         }
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFEEEEEE))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("引き落とし日 (翌月)", fontSize = 16.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = paymentDayInput,
-                    onValueChange = { paymentDayInput = it; it.toIntOrNull()?.let { day -> if (day in 1..31) viewModel.setCreditPaymentDay(day) } },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.width(80.dp)
-                )
+                OutlinedTextField(value = paymentDayInput, onValueChange = { paymentDayInput = it; it.toIntOrNull()?.let { day -> if (day in 1..31) viewModel.setCreditPaymentDay(day) } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(80.dp))
                 Text(" 日", fontSize = 16.sp)
             }
         }
@@ -374,150 +308,72 @@ fun SettingsScreen(viewModel: TransactionViewModel) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("休日の対応", fontSize = 16.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.RadioButton(selected = creditHolidayPolicy == "forward", onClick = { viewModel.setCreditHolidayPolicy("forward") })
-                Text("前倒し", fontSize = 14.sp)
-                androidx.compose.material3.RadioButton(selected = creditHolidayPolicy == "backward", onClick = { viewModel.setCreditHolidayPolicy("backward") })
-                Text("後倒し", fontSize = 14.sp)
+                RadioButton(selected = creditHolidayPolicy == "forward", onClick = { viewModel.setCreditHolidayPolicy("forward") }); Text("前倒し", fontSize = 14.sp)
+                RadioButton(selected = creditHolidayPolicy == "backward", onClick = { viewModel.setCreditHolidayPolicy("backward") }); Text("後倒し", fontSize = 14.sp)
             }
         }
-
         Spacer(modifier = Modifier.height(32.dp))
 
-        // ============================
-        // サブスクリプション設定
-        // ============================
         Text("サブスクリプション設定", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
-
         OutlinedTextField(value = subName, onValueChange = { subName = it }, label = { Text("サブスク名 (例: 音楽配信)") }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(8.dp))
-
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = subAmount, onValueChange = { subAmount = it }, label = { Text("金額") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
             Spacer(modifier = Modifier.width(16.dp))
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (isYearlySub) "年払い" else "月々払い", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Switch(checked = isYearlySub, onCheckedChange = { isYearlySub = it })
-            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(if (isYearlySub) "年払い" else "月々払い", fontSize = 12.sp, fontWeight = FontWeight.Bold); Switch(checked = isYearlySub, onCheckedChange = { isYearlySub = it }) }
         }
-
         Spacer(modifier = Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("開始時期:")
-            Spacer(modifier = Modifier.width(8.dp))
-            OutlinedTextField(
-                value = startYear,
-                onValueChange = { startYear = it },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.width(80.dp)
-            )
-            Text(" 年")
-            Spacer(modifier = Modifier.width(8.dp))
-            OutlinedTextField(
-                value = startMonth,
-                onValueChange = { startMonth = it },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.width(60.dp)
-            )
-            Text(" 月")
+            Text("開始時期:"); Spacer(modifier = Modifier.width(8.dp))
+            OutlinedTextField(value = startYear, onValueChange = { startYear = it }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(80.dp)); Text(" 年"); Spacer(modifier = Modifier.width(8.dp))
+            OutlinedTextField(value = startMonth, onValueChange = { startMonth = it }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(60.dp)); Text(" 月")
         }
-
         if (isYearlySub) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("支払い月:")
-                Spacer(modifier = Modifier.width(8.dp))
-                OutlinedTextField(
-                    value = subBillingMonth.toString(),
-                    onValueChange = { it.toIntOrNull()?.let { m -> if (m in 1..12) subBillingMonth = m } },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.width(80.dp)
-                )
-                Text(" 月")
+                Text("支払い月:"); Spacer(modifier = Modifier.width(8.dp))
+                OutlinedTextField(value = subBillingMonth.toString(), onValueChange = { it.toIntOrNull()?.let { m -> if (m in 1..12) subBillingMonth = m } }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(80.dp)); Text(" 月")
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Button(
-            onClick = {
-                val amt = subAmount.toIntOrNull() ?: 0
-                val y = startYear.toIntOrNull() ?: LocalDate.now().year
-                val m = startMonth.toIntOrNull() ?: LocalDate.now().monthValue
-                val formattedStart = String.format("%04d-%02d", y, m)
-
-                if (subName.isNotBlank() && amt > 0) {
-                    viewModel.addSubscription(subName, amt, isYearlySub, if(isYearlySub) subBillingMonth else 1, formattedStart)
-                    subName = ""
-                    subAmount = ""
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("サブスクを追加") }
-
+        Button(onClick = {
+            val amt = subAmount.toIntOrNull() ?: 0
+            val y = startYear.toIntOrNull() ?: LocalDate.now().year
+            val m = startMonth.toIntOrNull() ?: LocalDate.now().monthValue
+            if (subName.isNotBlank() && amt > 0) { viewModel.addSubscription(subName, amt, isYearlySub, if(isYearlySub) subBillingMonth else 1, String.format("%04d-%02d", y, m)); subName = ""; subAmount = "" }
+        }, modifier = Modifier.fillMaxWidth()) { Text("サブスクを追加") }
         Spacer(modifier = Modifier.height(16.dp))
-
         subs.forEach { sub ->
             val typeText = if (sub.isYearly) "年払い(${sub.billingMonth}月)" else "月々払い"
             val parts = sub.startYearMonth.split("-")
             val startText = if (parts.size == 2) "${parts[0]}年${parts[1].toInt()}月開始" else ""
-
-            val endText = if (sub.endYearMonth != null) {
-                val eParts = sub.endYearMonth.split("-")
-                " / ${eParts[0]}年${eParts[1].toInt()}月終了"
-            } else ""
+            val endText = if (sub.endYearMonth != null) { val eParts = sub.endYearMonth.split("-"); " / ${eParts[0]}年${eParts[1].toInt()}月終了" } else ""
 
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = sub.name, fontSize = 16.sp, color = if (sub.endYearMonth != null) Color.Gray else Color.Black)
                     Text(text = "$typeText / ${sub.amount}円 / $startText$endText", fontSize = 12.sp, color = Color.Gray)
                 }
-
-                // ★追加: ボタン類を右側にコンパクトにまとめる
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (sub.endYearMonth == null) {
-                        TextButton(onClick = {
-                            editTerminateSubId = sub.id
-                            termYear = LocalDate.now().year.toString()
-                            termMonth = LocalDate.now().monthValue.toString()
-                        }) { Text("解約") }
+                        TextButton(onClick = { editTerminateSubId = sub.id; termYear = LocalDate.now().year.toString(); termMonth = LocalDate.now().monthValue.toString() }) { Text("解約") }
                     } else {
-                        TextButton(onClick = {
-                            editTerminateSubId = sub.id
-                            val eParts = sub.endYearMonth.split("-")
-                            if (eParts.size == 2) {
-                                termYear = eParts[0]
-                                termMonth = eParts[1].toInt().toString()
-                            }
-                        }) { Text("修正") }
+                        TextButton(onClick = { editTerminateSubId = sub.id; val eParts = sub.endYearMonth.split("-"); if (eParts.size == 2) { termYear = eParts[0]; termMonth = eParts[1].toInt().toString() } }) { Text("修正") }
                     }
-
-                    // 基本情報編集ボタン
                     IconButton(onClick = {
-                        editSubId = sub.id
-                        editSubName = sub.name
-                        editSubAmount = sub.amount.toString()
-                        editIsYearlySub = sub.isYearly
-                        editSubBillingMonth = sub.billingMonth
-                        val sParts = sub.startYearMonth.split("-")
-                        if (sParts.size == 2) {
-                            editStartYear = sParts[0]
-                            editStartMonth = sParts[1].toInt().toString()
-                        }
+                        editSubId = sub.id; editSubName = sub.name; editSubAmount = sub.amount.toString()
+                        editIsYearlySub = sub.isYearly; editSubBillingMonth = sub.billingMonth
+                        val sParts = sub.startYearMonth.split("-"); if (sParts.size == 2) { editStartYear = sParts[0]; editStartMonth = sParts[1].toInt().toString() }
                     }) { Icon(Icons.Filled.Edit, contentDescription = "編集", tint = Color.Gray) }
-
-                    // 完全削除ボタン
-                    IconButton(onClick = { viewModel.deleteSubscription(sub.id) }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "削除", tint = Color.Red)
-                    }
+                    IconButton(onClick = { viewModel.deleteSubscription(sub.id) }) { Icon(Icons.Filled.Delete, contentDescription = "削除", tint = Color.Red) }
                 }
             }
             HorizontalDivider(color = Color.LightGray)
         }
-
         Spacer(modifier = Modifier.height(32.dp))
 
-        // ============================
-        // カテゴリー設定
-        // ============================
+        // ★修正: カテゴリーは完全自由に削除可能に
         Text("カテゴリー設定", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -532,14 +388,7 @@ fun SettingsScreen(viewModel: TransactionViewModel) {
         categories.forEach { category ->
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(text = category.name, fontSize = 16.sp)
-                if (category.isDefault) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("登録時に表示", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(end = 8.dp))
-                        Switch(checked = category.isVisible, onCheckedChange = { isChecked -> viewModel.updateCategory(category.copy(isVisible = isChecked)) })
-                    }
-                } else {
-                    IconButton(onClick = { viewModel.deleteCategory(category) }) { Icon(Icons.Filled.Delete, contentDescription = "削除", tint = Color.Red) }
-                }
+                IconButton(onClick = { viewModel.deleteCategory(category) }) { Icon(Icons.Filled.Delete, contentDescription = "削除", tint = Color.Red) }
             }
             HorizontalDivider(color = Color.LightGray)
         }
@@ -553,143 +402,60 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
     var showDailyDetailDialog by remember { mutableStateOf(false) }
-
-    // ★追加: 年月選択ダイアログの表示状態を管理する変数
     var showYearMonthPicker by remember { mutableStateOf(false) }
 
-    val transactions by viewModel.getTransactionsByMonth(
-        currentMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
-    ).collectAsState(initial = emptyList<Transaction>())
-
+    val transactions by viewModel.getTransactionsByMonth(currentMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))).collectAsState(initial = emptyList<Transaction>())
     val aggregateOnUsage by viewModel.aggregateCreditOnUsageDate.collectAsState()
     val holidays by viewModel.holidays.collectAsState()
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = { currentMonth = currentMonth.minusMonths(1) }) { Text("先月") }
-
-            // ★修正: タップできるように clickable を追加し、余白を調整
-            Text(
-                text = "${currentMonth.year}年 ${currentMonth.monthValue}月",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clickable { showYearMonthPicker = true } // タップでダイアログを開く
-                    .padding(8.dp) // タップしやすくするための余白
-            )
-
+            Text(text = "${currentMonth.year}年 ${currentMonth.monthValue}月", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { showYearMonthPicker = true }.padding(8.dp))
             Button(onClick = { currentMonth = currentMonth.plusMonths(1) }) { Text("来月") }
         }
-
         Spacer(modifier = Modifier.height(8.dp))
-
-// ... (ここから下の「色分けの凡例」以降のコードはすべてそのまま残します) ...
-
-        // 色分けの凡例（ガイド）
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Text("■ 収入", color = Color.Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Text("■ 支出", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Text("■ ｸﾚｼﾞｯﾄ", color = Color(0xFFF57C00), fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Text("■ 引落し", color = Color(0xFF6A1B9A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
-
         Spacer(modifier = Modifier.height(12.dp))
-
         val daysOfWeek = listOf("日", "月", "火", "水", "木", "金", "土")
         Row(modifier = Modifier.fillMaxWidth()) {
-            daysOfWeek.forEach { day ->
-                Text(
-                    text = day,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Bold,
-                    color = if (day == "日") Color.Red else if (day == "土") Color.Blue else Color.Black
-                )
-            }
+            daysOfWeek.forEach { day -> Text(text = day, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = if (day == "日") Color.Red else if (day == "土") Color.Blue else Color.Black) }
         }
-
         Spacer(modifier = Modifier.height(8.dp))
-
         val daysInMonth = currentMonth.lengthOfMonth()
         val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
         val calendarItems = List(firstDayOfWeek) { null } + (1..daysInMonth).toList()
 
-        // カレンダーグリッド
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(7),
-            modifier = Modifier.weight(1f)
-        ) {
+        LazyVerticalGrid(columns = GridCells.Fixed(7), modifier = Modifier.weight(1f)) {
             items(calendarItems) { day ->
                 if (day != null) {
                     val date = currentMonth.atDay(day)
                     val dailyTransactions = transactions.filter { it.date == date.toString() }
 
+                    // ★修正: 支払方法を見て集計
                     val incomeSum = dailyTransactions.filter { !it.isExpense }.sumOf { it.amount }
-                    val regularExpenseSum = dailyTransactions.filter { it.isExpense && !it.isCreditPayment && it.category != "クレジット" }.sumOf { it.amount }
-                    val creditUsageSum = dailyTransactions.filter { it.isExpense && it.category == "クレジット" }.sumOf { it.amount }
+                    val regularExpenseSum = dailyTransactions.filter { it.isExpense && !it.isCreditPayment && it.paymentMethod != "クレジット" }.sumOf { it.amount }
+                    val creditUsageSum = dailyTransactions.filter { it.isExpense && it.paymentMethod == "クレジット" && !it.isCreditPayment }.sumOf { it.amount }
                     val creditPaymentSum = dailyTransactions.filter { it.isCreditPayment }.sumOf { it.amount }
 
-                    // ★追加: 日付の色分け判定（日祝=赤、土=青、平日=黒）
                     val isHoliday = holidays.contains(date)
-                    val isSunday = date.dayOfWeek.value == 7 // 7は日曜日
-                    val isSaturday = date.dayOfWeek.value == 6 // 6は土曜日
+                    val isSunday = date.dayOfWeek.value == 7
+                    val isSaturday = date.dayOfWeek.value == 6
+                    val dateColor = when { isSunday || isHoliday -> Color.Red; isSaturday -> Color.Blue; else -> Color.Black }
 
-                    val dateColor = when {
-                        isSunday || isHoliday -> Color.Red
-                        isSaturday -> Color.Blue
-                        else -> Color.Black
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 85.dp)
-                            .padding(2.dp)
-                            .background(Color(0xFFF5F5F5), shape = MaterialTheme.shapes.small)
-                            .clickable {
-                                selectedDate = date
-                                showDailyDetailDialog = true
-                            }
-                            .padding(top = 4.dp, bottom = 4.dp, start = 1.dp, end = 1.dp),
-                        contentAlignment = Alignment.TopCenter
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(0.dp)
-                        ) {
-                            Text(
-                                text = day.toString(),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = dateColor, // ★判定した色を適用
-                                modifier = Modifier.padding(bottom = 2.dp)
-                            )
-
-                            val amountStyle = androidx.compose.ui.text.TextStyle(
-                                fontSize = 9.sp,
-                                lineHeight = 9.sp,
-                                textAlign = TextAlign.Center
-                            )
-
-                            if (incomeSum > 0) {
-                                Text(text = "+$incomeSum", color = Color.Blue, style = amountStyle)
-                            }
-                            if (regularExpenseSum > 0) {
-                                Text(text = "-$regularExpenseSum", color = Color.Red, style = amountStyle)
-                            }
-                            if (creditUsageSum > 0) {
-                                Text(text = "-$creditUsageSum", color = Color(0xFFF57C00), style = amountStyle)
-                            }
-                            if (creditPaymentSum > 0) {
-                                Text(text = "-$creditPaymentSum", color = Color(0xFF6A1B9A), style = amountStyle)
-                            }
+                    Box(modifier = Modifier.fillMaxWidth().heightIn(min = 85.dp).padding(2.dp).background(Color(0xFFF5F5F5), shape = MaterialTheme.shapes.small).clickable { selectedDate = date; showDailyDetailDialog = true }.padding(top = 4.dp, bottom = 4.dp, start = 1.dp, end = 1.dp), contentAlignment = Alignment.TopCenter) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                            Text(text = day.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = dateColor, modifier = Modifier.padding(bottom = 2.dp))
+                            val amountStyle = androidx.compose.ui.text.TextStyle(fontSize = 9.sp, lineHeight = 9.sp, textAlign = TextAlign.Center)
+                            if (incomeSum > 0) Text(text = "+$incomeSum", color = Color.Blue, style = amountStyle)
+                            if (regularExpenseSum > 0) Text(text = "-$regularExpenseSum", color = Color.Red, style = amountStyle)
+                            if (creditUsageSum > 0) Text(text = "-$creditUsageSum", color = Color(0xFFF57C00), style = amountStyle)
+                            if (creditPaymentSum > 0) Text(text = "-$creditPaymentSum", color = Color(0xFF6A1B9A), style = amountStyle)
                         }
                     }
                 } else {
@@ -697,19 +463,12 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
                 }
             }
         }
-
         Spacer(modifier = Modifier.height(8.dp))
-
-        // 月間収支サマリー
         val monthlyIncome = transactions.filter { !it.isExpense }.sumOf { it.amount }
         val monthlyExpense = transactions.calculateTotalExpense(aggregateOnUsage)
         val monthlyBalance = monthlyIncome - monthlyExpense
         val balanceColor = if (monthlyBalance >= 0) Color.Blue else Color.Red
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD))
-        ) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD))) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("${currentMonth.monthValue}月 合計", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -721,104 +480,37 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
             }
         }
     }
-
-    if (showDailyDetailDialog && selectedDate != null) {
-        DailyDetailDialog(
-            date = selectedDate!!,
-            transactions = transactions.filter { it.date == selectedDate.toString() },
-            viewModel = viewModel,
-            onDismiss = { showDailyDetailDialog = false }
-        )
-    }
-
-    //年月選択ダイアログの呼び出し
+    if (showDailyDetailDialog && selectedDate != null) DailyDetailDialog(date = selectedDate!!, transactions = transactions.filter { it.date == selectedDate.toString() }, viewModel = viewModel, onDismiss = { showDailyDetailDialog = false })
     if (showYearMonthPicker) {
-        YearMonthPickerDialog(
-            initialYearMonth = currentMonth,
-            onDismissRequest = { showYearMonthPicker = false },
-            onYearMonthSelected = { selected ->
-                currentMonth = selected // 選択された年月にカレンダーを更新
-                showYearMonthPicker = false
-            }
-        )
+        YearMonthPickerDialog(initialYearMonth = currentMonth, onDismissRequest = { showYearMonthPicker = false }, onYearMonthSelected = { selected -> currentMonth = selected; showYearMonthPicker = false })
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DailyDetailDialog(
-    date: LocalDate,
-    transactions: List<Transaction>,
-    viewModel: TransactionViewModel,
-    onDismiss: () -> Unit
-) {
+fun DailyDetailDialog(date: LocalDate, transactions: List<Transaction>, viewModel: TransactionViewModel, onDismiss: () -> Unit) {
     var showInputBottomSheet by remember { mutableStateOf(false) }
     var editingTransaction by remember { mutableStateOf<Transaction?>(null) }
     var transactionToDelete by remember { mutableStateOf<Transaction?>(null) }
-
-    // ★追加: 設定値を取得
     val aggregateOnUsage by viewModel.aggregateCreditOnUsageDate.collectAsState()
-
-    // ★修正: 新しい計算ルールを適用
     val totalIncome = transactions.filter { !it.isExpense }.sumOf { it.amount }
     val totalExpense = transactions.calculateTotalExpense(aggregateOnUsage)
 
     Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.8f)
-                .padding(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
-        ) {
-            Scaffold(
-                floatingActionButton = {
-                    FloatingActionButton(onClick = {
-                        editingTransaction = null // 新規作成モード
-                        showInputBottomSheet = true
-                    }) {
-                        Icon(Icons.Filled.Add, contentDescription = "追加")
-                    }
-                }
-            ) { innerPadding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = date.format(DateTimeFormatter.ofPattern("yyyy年MM月dd日")),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+        Card(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f).padding(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Scaffold(floatingActionButton = { FloatingActionButton(onClick = { editingTransaction = null; showInputBottomSheet = true }) { Icon(Icons.Filled.Add, contentDescription = "追加") } }) { innerPadding ->
+                Column(modifier = Modifier.fillMaxSize().padding(innerPadding).padding(16.dp)) {
+                    Text(text = date.format(DateTimeFormatter.ofPattern("yyyy年MM月dd日")), fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("収入合計: +$totalIncome", color = Color.Blue, fontWeight = FontWeight.Bold)
                         Text("支出合計: -$totalExpense", color = Color.Red, fontWeight = FontWeight.Bold)
                     }
-
                     HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-
-                    if (transactions.isEmpty()) {
-                        Text("この日の登録はありません", color = Color.Gray)
-                    } else {
+                    if (transactions.isEmpty()) { Text("この日の登録はありません", color = Color.Gray) } else {
                         LazyColumn {
                             items(transactions) { transaction ->
-                                TransactionItemRow(
-                                    transaction = transaction,
-                                    onEditClick = {
-                                        editingTransaction = transaction // 編集モード
-                                        showInputBottomSheet = true
-                                    },
-                                    onDeleteClick = {
-                                        transactionToDelete = transaction // 削除確認を出す
-                                    }
-                                )
+                                TransactionItemRow(transaction = transaction, onEditClick = { editingTransaction = transaction; showInputBottomSheet = true }, onDeleteClick = { transactionToDelete = transaction })
                                 HorizontalDivider()
                             }
                         }
@@ -827,94 +519,95 @@ fun DailyDetailDialog(
             }
         }
     }
-
-    // 削除確認ダイアログ
     if (transactionToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { transactionToDelete = null },
-            title = { Text("削除の確認") },
-            text = { Text("「${transactionToDelete?.title}」を削除してもよろしいですか？\n※クレジット利用分を削除すると、実際の引き落としデータも一緒に削除されます。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deleteTransaction(transactionToDelete!!)
-                    transactionToDelete = null
-                }) {
-                    Text("削除する", color = Color.Red)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { transactionToDelete = null }) {
-                    Text("キャンセル")
-                }
-            }
-        )
+        AlertDialog(onDismissRequest = { transactionToDelete = null }, title = { Text("削除の確認") }, text = { Text("「${transactionToDelete?.title}」を削除してもよろしいですか？") }, confirmButton = { TextButton(onClick = { viewModel.deleteTransaction(transactionToDelete!!); transactionToDelete = null }) { Text("削除する", color = Color.Red) } }, dismissButton = { TextButton(onClick = { transactionToDelete = null }) { Text("キャンセル") } })
     }
-
-    // 入力・編集ボトムシート
     if (showInputBottomSheet) {
         ModalBottomSheet(onDismissRequest = { showInputBottomSheet = false }) {
-            TransactionInputForm(
-                date = date,
-                initialTransaction = editingTransaction, // 編集データを渡す
-                viewModel = viewModel,
-                onSave = { title, amount, isExpense, category ->
-                    if (editingTransaction == null) {
-                        // 新規追加
-                        viewModel.addTransaction(title, amount, isExpense, category, date.toString())
-                    } else {
-                        // 更新
-                        val updated = editingTransaction!!.copy(
-                            title = title,
-                            amount = amount,
-                            isExpense = isExpense,
-                            category = category
-                        )
-                        viewModel.updateTransaction(updated)
-                    }
-                    showInputBottomSheet = false
+            TransactionInputForm(date = date, initialTransaction = editingTransaction, viewModel = viewModel, onSave = { title, amount, isExpense, category, paymentMethod ->
+                if (editingTransaction == null) {
+                    viewModel.addTransaction(title, amount, isExpense, category, paymentMethod, date.toString())
+                } else {
+                    val updated = editingTransaction!!.copy(title = title, amount = amount, isExpense = isExpense, category = category, paymentMethod = paymentMethod)
+                    viewModel.updateTransaction(updated)
                 }
-            )
+                showInputBottomSheet = false
+            })
         }
     }
 }
 
-// === 明細行（サブスクを保護） ===
+// ★修正: 支払方法のUIを追加
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TransactionItemRow(
-    transaction: Transaction,
-    onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit
-) {
-    val amountColor = if (!transaction.isExpense) {
-        Color.Blue
-    } else if (transaction.isCreditPayment) {
-        Color(0xFF6A1B9A)
-    } else if (transaction.category == "クレジット") {
-        Color(0xFFF57C00)
-    } else {
-        Color.Red
-    }
+fun TransactionInputForm(date: LocalDate, initialTransaction: Transaction?, viewModel: TransactionViewModel, onSave: (String, Int, Boolean, String, String) -> Unit) {
+    var title by remember { mutableStateOf(initialTransaction?.title ?: "") }
+    var amount by remember { mutableStateOf(initialTransaction?.amount?.toString() ?: "") }
+    var isExpense by remember { mutableStateOf(initialTransaction?.isExpense ?: true) }
+    var category by remember { mutableStateOf(initialTransaction?.category ?: "") }
+    var paymentMethod by remember { mutableStateOf(initialTransaction?.paymentMethod ?: "現金") }
+    val categories by viewModel.allCategories.collectAsState(initial = emptyList<Category>())
+    var expanded by remember { mutableStateOf(false) }
 
+    Column(modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp)) {
+        val modeText = if (initialTransaction == null) "新規登録" else "編集"
+        Text("$modeText: ${date.format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"))}", fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("収入")
+            Switch(checked = isExpense, onCheckedChange = { isExpense = it })
+            Text("支出")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 支出の場合のみ支払方法を表示
+        if (isExpense) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("支払方法:", modifier = Modifier.width(80.dp))
+                RadioButton(selected = paymentMethod == "現金", onClick = { paymentMethod = "現金" })
+                Text("現金", fontSize = 14.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                RadioButton(selected = paymentMethod == "クレジット", onClick = { paymentMethod = "クレジット" })
+                Text("ｸﾚｼﾞｯﾄ", fontSize = 14.sp)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        } else {
+            paymentMethod = "現金"
+        }
+
+        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("内容 (例: スーパー)") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("金額") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        Box {
+            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text(if (category.isEmpty()) "カテゴリーを選択" else category) }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                categories.forEach { cat -> DropdownMenuItem(text = { Text(cat.name) }, onClick = { category = cat.name; expanded = false }) }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = {
+            val amountInt = amount.toIntOrNull() ?: 0
+            if (title.isNotEmpty() && amountInt > 0 && category.isNotEmpty()) { onSave(title, amountInt, isExpense, category, paymentMethod) }
+        }, modifier = Modifier.fillMaxWidth()) { Text(if (initialTransaction == null) "保存する" else "更新する") }
+    }
+}
+
+// ★修正: カテゴリーと支払方法の両方を明細に表示
+@Composable
+fun TransactionItemRow(transaction: Transaction, onEditClick: () -> Unit, onDeleteClick: () -> Unit) {
+    val amountColor = if (!transaction.isExpense) Color.Blue else if (transaction.isCreditPayment) Color(0xFF6A1B9A) else if (transaction.paymentMethod == "クレジット") Color(0xFFF57C00) else Color.Red
     val amountPrefix = if (transaction.isExpense) "-" else "+"
 
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = transaction.title, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-            Text(text = transaction.category, fontSize = 12.sp, color = Color.Gray)
+            // 支出かつ自動生成データ以外なら、支払方法をかっこ付きで表示
+            val methodText = if (transaction.isExpense && !transaction.isCreditPayment && transaction.id > 0) " (${transaction.paymentMethod})" else ""
+            Text(text = "${transaction.category}$methodText", fontSize = 12.sp, color = Color.Gray)
         }
-        Text(
-            text = "$amountPrefix${transaction.amount}円",
-            color = amountColor,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp,
-            modifier = Modifier.padding(end = 8.dp)
-        )
+        Text(text = "$amountPrefix${transaction.amount}円", color = amountColor, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(end = 8.dp))
 
-        // ★変更: IDがマイナス（仮想サブスクデータ）の場合は削除・編集させない
         if (transaction.id < 0) {
             Text("サブスク(自動)", fontSize = 10.sp, color = Color.Gray, modifier = Modifier.padding(8.dp))
         } else if (!transaction.isCreditPayment) {
@@ -928,191 +621,35 @@ fun TransactionItemRow(
     }
 }
 
-// === 入力フォーム（非表示設定のカテゴリーを除外する） ===
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TransactionInputForm(
-    date: LocalDate,
-    initialTransaction: Transaction?,
-    viewModel: TransactionViewModel,
-    onSave: (String, Int, Boolean, String) -> Unit
-) {
-    var title by remember { mutableStateOf(initialTransaction?.title ?: "") }
-    var amount by remember { mutableStateOf(initialTransaction?.amount?.toString() ?: "") }
-    var isExpense by remember { mutableStateOf(initialTransaction?.isExpense ?: true) }
-    var category by remember { mutableStateOf(initialTransaction?.category ?: "") }
-
-    // ★すべてのカテゴリーを取得し、表示ON（isVisible == true）のものだけを絞り込む
-    val allCategories by viewModel.allCategories.collectAsState(initial = emptyList<Category>())
-    val visibleCategories = allCategories.filter { it.isVisible }
-
-    var expanded by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-            .padding(bottom = 32.dp)
-    ) {
-        val modeText = if (initialTransaction == null) "新規登録" else "編集"
-        Text(
-            "$modeText: ${date.format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"))}",
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("収入")
-            Switch(checked = isExpense, onCheckedChange = { isExpense = it })
-            Text("支出")
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            label = { Text("内容 (例: スーパー)") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = amount,
-            onValueChange = { amount = it },
-            label = { Text("金額") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Box {
-            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (category.isEmpty()) "カテゴリーを選択" else category)
-            }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                // ★絞り込んだ visibleCategories を表示
-                visibleCategories.forEach { cat ->
-                    DropdownMenuItem(
-                        text = { Text(cat.name) },
-                        onClick = { category = cat.name; expanded = false }
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = {
-                val amountInt = amount.toIntOrNull() ?: 0
-                if (title.isNotEmpty() && amountInt > 0 && category.isNotEmpty()) {
-                    onSave(title, amountInt, isExpense, category)
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(if (initialTransaction == null) "保存する" else "更新する")
-        }
-    }
-}
-
-// === 重複合算を防止する専用の計算ルール ===
+// ★修正: 支払方法（paymentMethod）を基準に合算ルールを適用
 fun List<Transaction>.calculateTotalExpense(aggregateOnUsage: Boolean): Int {
     return this.filter { it.isExpense }.filter {
         if (it.id < 0) {
-            true // ★追加: 仮想サブスクデータ（idがマイナス）は設定に関わらず常に合計に含める
+            true // サブスクは常に含める
         } else if (aggregateOnUsage) {
             !it.isCreditPayment // 利用日合算なら、引き落としデータは除外
         } else {
-            !(it.category == "クレジット" && !it.isCreditPayment) // 引き落とし日合算なら、利用データは除外
+            !(it.paymentMethod == "クレジット" && !it.isCreditPayment) // 引き落とし日合算なら、クレジット利用データは除外
         }
     }.sumOf { it.amount }
 }
 
-// === 年月選択用スクロールダイアログ ===
 @Composable
-fun YearMonthPickerDialog(
-    initialYearMonth: YearMonth,
-    onDismissRequest: () -> Unit,
-    onYearMonthSelected: (YearMonth) -> Unit
-) {
+fun YearMonthPickerDialog(initialYearMonth: YearMonth, onDismissRequest: () -> Unit, onYearMonthSelected: (YearMonth) -> Unit) {
     var selectedYear by remember { mutableStateOf(initialYearMonth.year) }
     var selectedMonth by remember { mutableStateOf(initialYearMonth.monthValue) }
-
-    val years = (2000..2050).toList() // 選択できる年の範囲
+    val years = (2000..2050).toList()
     val months = (1..12).toList()
-
-    // 開いた時に、現在の年月が真ん中付近にスクロールされた状態にする
-    val yearListState = androidx.compose.foundation.lazy.rememberLazyListState(
-        initialFirstVisibleItemIndex = maxOf(0, years.indexOf(initialYearMonth.year) - 2)
-    )
-    val monthListState = androidx.compose.foundation.lazy.rememberLazyListState(
-        initialFirstVisibleItemIndex = maxOf(0, months.indexOf(initialYearMonth.monthValue) - 2)
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = { Text("年月を選択", fontWeight = FontWeight.Bold) },
-        text = {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                // 年のスクロールリスト
-                LazyColumn(
-                    state = yearListState,
-                    modifier = Modifier.weight(1f).height(200.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    items(years) { year ->
-                        val isSelected = year == selectedYear
-                        Text(
-                            text = "${year}年",
-                            fontSize = if (isSelected) 22.sp else 16.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) Color.Blue else Color.Gray,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedYear = year }
-                                .padding(vertical = 12.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-
-                // 月のスクロールリスト
-                LazyColumn(
-                    state = monthListState,
-                    modifier = Modifier.weight(1f).height(200.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    items(months) { month ->
-                        val isSelected = month == selectedMonth
-                        Text(
-                            text = "${month}月",
-                            fontSize = if (isSelected) 22.sp else 16.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) Color.Blue else Color.Gray,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedMonth = month }
-                                .padding(vertical = 12.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
+    val yearListState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = maxOf(0, years.indexOf(initialYearMonth.year) - 2))
+    val monthListState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = maxOf(0, months.indexOf(initialYearMonth.monthValue) - 2))
+    AlertDialog(onDismissRequest = onDismissRequest, title = { Text("年月を選択", fontWeight = FontWeight.Bold) }, text = {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            LazyColumn(state = yearListState, modifier = Modifier.weight(1f).height(200.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                items(years) { year -> val isSelected = year == selectedYear; Text(text = "${year}年", fontSize = if (isSelected) 22.sp else 16.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.Blue else Color.Gray, modifier = Modifier.fillMaxWidth().clickable { selectedYear = year }.padding(vertical = 12.dp), textAlign = TextAlign.Center) }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onYearMonthSelected(YearMonth.of(selectedYear, selectedMonth)) }) {
-                Text("決定")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismissRequest) {
-                Text("キャンセル")
+            LazyColumn(state = monthListState, modifier = Modifier.weight(1f).height(200.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                items(months) { month -> val isSelected = month == selectedMonth; Text(text = "${month}月", fontSize = if (isSelected) 22.sp else 16.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if (isSelected) Color.Blue else Color.Gray, modifier = Modifier.fillMaxWidth().clickable { selectedMonth = month }.padding(vertical = 12.dp), textAlign = TextAlign.Center) }
             }
         }
-    )
+    }, confirmButton = { TextButton(onClick = { onYearMonthSelected(YearMonth.of(selectedYear, selectedMonth)) }) { Text("決定") } }, dismissButton = { TextButton(onClick = onDismissRequest) { Text("キャンセル") } })
 }
