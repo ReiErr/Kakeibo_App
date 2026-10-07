@@ -5,17 +5,16 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-// ★バージョンを「4」に変更
-@Database(entities = [Transaction::class, Category::class], version = 4, exportSchema = false)
+// ★バージョンを「6」に変更
+@Database(entities = [Transaction::class, Category::class, PaymentMethod::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
-
     abstract fun transactionDao(): TransactionDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun paymentMethodDao(): PaymentMethodDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
-
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -23,7 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "kakeibo_database"
                 )
-                    .fallbackToDestructiveMigration() // バージョン4になり、過去のデータがリセットされます
+                    .fallbackToDestructiveMigration() // バージョン6にリセット
                     .build()
                 INSTANCE = instance
                 instance

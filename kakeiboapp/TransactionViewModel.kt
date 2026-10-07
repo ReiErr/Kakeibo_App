@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.kakeiboapp.data.AppDatabase
 import com.example.kakeiboapp.data.Category
+import com.example.kakeiboapp.data.PaymentMethod
 import com.example.kakeiboapp.data.Transaction
 import com.example.kakeiboapp.data.TransactionRepository
 import kotlinx.coroutines.flow.Flow
@@ -24,19 +25,16 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 data class Subscription(
-    val id: Int,
-    val name: String,
-    val amount: Int,
-    val isYearly: Boolean,
-    val billingMonth: Int,
-    val startYearMonth: String,
-    val endYearMonth: String? = null
+    val id: Int, val name: String, val amount: Int, val isYearly: Boolean,
+    val billingMonth: Int, val startYearMonth: String, val endYearMonth: String? = null
 )
 
 class TransactionViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: TransactionRepository
     val allCategories: Flow<List<Category>>
+    val allPaymentMethods: Flow<List<PaymentMethod>>
+    val allTransactions: Flow<List<Transaction>> // ★追加: 全期間のデータ
 
     private val prefs = application.getSharedPreferences("kakeibo_prefs", Context.MODE_PRIVATE)
 
@@ -57,37 +55,27 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
 
     init {
         val database = AppDatabase.getDatabase(application)
-        repository = TransactionRepository(database.transactionDao(), database.categoryDao())
+        repository = TransactionRepository(database.transactionDao(), database.categoryDao(), database.paymentMethodDao())
         allCategories = repository.allCategories
+        allPaymentMethods = repository.allPaymentMethods
+        allTransactions = repository.allTransactions
 
         viewModelScope.launch {
             if (repository.getCategoryCount() == 0) {
-                // 初期カテゴリーから「クレジット」を削除
-                val defaultCategories = listOf(
-                    Category(name = "食費"), Category(name = "日用品"), Category(name = "交通費"),
-                    Category(name = "給料"), Category(name = "その他")
-                )
-                defaultCategories.forEach { repository.insertCategory(it) }
+                listOf("食費", "日用品", "交通費", "給料", "その他").forEach { repository.insertCategory(Category(name = it)) }
+            }
+            if (repository.getPaymentMethodCount() == 0) {
+                listOf(PaymentMethod(name = "現金", isDefault = true), PaymentMethod(name = "クレジット", isDefault = true))
+                    .forEach { repository.insertPaymentMethod(it) }
             }
         }
         fetchHolidays()
         loadSubscriptions()
     }
 
-    fun setAggregateCreditOnUsageDate(onUsage: Boolean) {
-        prefs.edit().putBoolean("aggregate_credit_on_usage", onUsage).apply()
-        _aggregateCreditOnUsageDate.value = onUsage
-    }
-
-    fun setCreditPaymentDay(day: Int) {
-        prefs.edit().putInt("credit_payment_day", day).apply()
-        _creditPaymentDay.value = day
-    }
-
-    fun setCreditHolidayPolicy(policy: String) {
-        prefs.edit().putString("credit_holiday_policy", policy).apply()
-        _creditHolidayPolicy.value = policy
-    }
+    fun setAggregateCreditOnUsageDate(onUsage: Boolean) { prefs.edit().putBoolean("aggregate_credit_on_usage", onUsage).apply(); _aggregateCreditOnUsageDate.value = onUsage }
+    fun setCreditPaymentDay(day: Int) { prefs.edit().putInt("credit_payment_day", day).apply(); _creditPaymentDay.value = day }
+    fun setCreditHolidayPolicy(policy: String) { prefs.edit().putString("credit_holiday_policy", policy).apply(); _creditHolidayPolicy.value = policy }
 
     private fun fetchHolidays() = viewModelScope.launch {
         try {
@@ -99,90 +87,56 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
             if (savedJson != null) {
                 _holidays.value = parseHolidaysJson(savedJson)
             } else {
+                // ★修正: 完全オフライン時の十分な予備リストを復元
                 _holidays.value = setOf(
                     LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 12), LocalDate.of(2026, 2, 11),
-                    LocalDate.of(2026, 2, 23), LocalDate.of(2026, 3, 20), LocalDate.of(2026, 4, 29)
+                    LocalDate.of(2026, 2, 23), LocalDate.of(2026, 3, 20), LocalDate.of(2026, 4, 29),
+                    LocalDate.of(2026, 5, 3), LocalDate.of(2026, 5, 4), LocalDate.of(2026, 5, 5),
+                    LocalDate.of(2026, 7, 20), LocalDate.of(2026, 8, 11), LocalDate.of(2026, 9, 21),
+                    LocalDate.of(2026, 9, 22), LocalDate.of(2026, 9, 23), LocalDate.of(2026, 10, 12),
+                    LocalDate.of(2026, 11, 3), LocalDate.of(2026, 11, 23)
                 )
             }
         }
     }
-
     private fun parseHolidaysJson(jsonString: String): Set<LocalDate> {
         val jsonObject = JSONObject(jsonString)
         val dates = mutableSetOf<LocalDate>()
-        val keys = jsonObject.keys()
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-        while (keys.hasNext()) { dates.add(LocalDate.parse(keys.next(), formatter)) }
+        for (key in jsonObject.keys()) dates.add(LocalDate.parse(key, formatter))
         return dates
     }
 
-    // --- サブスクリプション管理 ---
     private fun loadSubscriptions() {
-        val json = prefs.getString("subscriptions_json", "[]")
-        val array = JSONArray(json)
-        val list = mutableListOf<Subscription>()
-        for (i in 0 until array.length()) {
+        val array = JSONArray(prefs.getString("subscriptions_json", "[]"))
+        val list = (0 until array.length()).map { i ->
             val obj = array.getJSONObject(i)
-            val startYM = obj.optString("startYearMonth", "2000-01")
-            val endYM = if (obj.has("endYearMonth") && !obj.isNull("endYearMonth")) obj.getString("endYearMonth") else null
-            list.add(Subscription(obj.getInt("id"), obj.getString("name"), obj.getInt("amount"), obj.getBoolean("isYearly"), obj.getInt("billingMonth"), startYM, endYM))
+            Subscription(obj.getInt("id"), obj.getString("name"), obj.getInt("amount"), obj.getBoolean("isYearly"), obj.getInt("billingMonth"), obj.optString("startYearMonth", "2000-01"), if (obj.has("endYearMonth") && !obj.isNull("endYearMonth")) obj.getString("endYearMonth") else null)
         }
         _subscriptions.value = list
     }
-
-    fun addSubscription(name: String, amount: Int, isYearly: Boolean, billingMonth: Int, startYearMonth: String) {
-        val current = _subscriptions.value.toMutableList()
-        val newId = (current.maxOfOrNull { it.id } ?: 0) + 1
-        current.add(Subscription(newId, name, amount, isYearly, billingMonth, startYearMonth, null))
-        saveSubscriptions(current)
-    }
-
-    fun updateSubscription(id: Int, name: String, amount: Int, isYearly: Boolean, billingMonth: Int, startYearMonth: String) {
-        val current = _subscriptions.value.map {
-            if (it.id == id) it.copy(name = name, amount = amount, isYearly = isYearly, billingMonth = billingMonth, startYearMonth = startYearMonth) else it
-        }
-        saveSubscriptions(current)
-    }
-
-    fun terminateSubscription(id: Int, endYearMonth: String?) {
-        val current = _subscriptions.value.map { if (it.id == id) it.copy(endYearMonth = endYearMonth) else it }
-        saveSubscriptions(current)
-    }
-
-    fun deleteSubscription(id: Int) {
-        val current = _subscriptions.value.filter { it.id != id }
-        saveSubscriptions(current)
-    }
-
     private fun saveSubscriptions(list: List<Subscription>) {
         val array = JSONArray()
         list.forEach { sub ->
-            val obj = JSONObject()
-            obj.put("id", sub.id); obj.put("name", sub.name); obj.put("amount", sub.amount)
-            obj.put("isYearly", sub.isYearly); obj.put("billingMonth", sub.billingMonth)
-            obj.put("startYearMonth", sub.startYearMonth)
-            if (sub.endYearMonth != null) obj.put("endYearMonth", sub.endYearMonth)
+            val obj = JSONObject().apply { put("id", sub.id); put("name", sub.name); put("amount", sub.amount); put("isYearly", sub.isYearly); put("billingMonth", sub.billingMonth); put("startYearMonth", sub.startYearMonth); if (sub.endYearMonth != null) put("endYearMonth", sub.endYearMonth) }
             array.put(obj)
         }
         prefs.edit().putString("subscriptions_json", array.toString()).apply()
         _subscriptions.value = list
     }
-
-    // --- トランザクション処理 ---
-    private data class SubParams(val subs: List<Subscription>, val paymentDay: Int, val policy: String, val holidaySet: Set<LocalDate>)
+    fun addSubscription(name: String, amount: Int, isYearly: Boolean, billingMonth: Int, startYearMonth: String) = saveSubscriptions(_subscriptions.value.toMutableList().apply { add(Subscription((maxOfOrNull { it.id } ?: 0) + 1, name, amount, isYearly, billingMonth, startYearMonth, null)) })
+    fun updateSubscription(id: Int, name: String, amount: Int, isYearly: Boolean, billingMonth: Int, startYearMonth: String) = saveSubscriptions(_subscriptions.value.map { if (it.id == id) it.copy(name = name, amount = amount, isYearly = isYearly, billingMonth = billingMonth, startYearMonth = startYearMonth) else it })
+    fun terminateSubscription(id: Int, endYearMonth: String?) = saveSubscriptions(_subscriptions.value.map { if (it.id == id) it.copy(endYearMonth = endYearMonth) else it })
+    fun deleteSubscription(id: Int) = saveSubscriptions(_subscriptions.value.filter { it.id != id })
 
     fun getTransactionsByMonth(yearMonth: String): Flow<List<Transaction>> {
-        val paramsFlow = combine(subscriptions, creditPaymentDay, creditHolidayPolicy, holidays) { s, pd, p, h -> SubParams(s, pd, p, h) }
-        return combine(repository.getTransactionsByMonth(yearMonth), paramsFlow) { dbTx, params ->
-            dbTx + generateVirtualSubscriptionsForMonth(yearMonth, params.subs, params.paymentDay, params.policy, params.holidaySet)
-        }
+        val paramsFlow = combine(subscriptions, creditPaymentDay, creditHolidayPolicy, holidays) { s, pd, p, h -> Triple(s, pd, p) }
+        return combine(repository.getTransactionsByMonth(yearMonth), paramsFlow) { dbTx, (subs, pd, pol) -> dbTx + generateVirtualSubscriptionsForMonth(yearMonth, subs, pd, pol, _holidays.value) }
     }
-
     fun getTransactionsByYear(year: String): Flow<List<Transaction>> {
-        val paramsFlow = combine(subscriptions, creditPaymentDay, creditHolidayPolicy, holidays) { s, pd, p, h -> SubParams(s, pd, p, h) }
-        return combine(repository.getTransactionsByYear(year), paramsFlow) { dbTx, params ->
-            val virtuals = mutableListOf<Transaction>()
-            for (month in 1..12) virtuals.addAll(generateVirtualSubscriptionsForMonth(String.format("%s-%02d", year, month), params.subs, params.paymentDay, params.policy, params.holidaySet))
+        val paramsFlow = combine(subscriptions, creditPaymentDay, creditHolidayPolicy, holidays) { s, pd, p, h -> Triple(s, pd, p) }
+        return combine(repository.getTransactionsByYear(year), paramsFlow) { dbTx, (subs, pd, pol) ->
+            val virtuals = (1..12).flatMap { generateVirtualSubscriptionsForMonth(String.format("%s-%02d", year, it), subs, pd, pol, _holidays.value) }
             dbTx + virtuals
         }
     }
@@ -194,57 +148,56 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         paymentDate = paymentDate.withDayOfMonth(if (paymentDay > maxDay) maxDay else paymentDay)
         val finalPaymentDate = adjustForWeekendAndHoliday(paymentDate, policy, holidaySet)
 
-        val virtuals = mutableListOf<Transaction>()
-        subs.forEach { sub ->
+        return subs.mapNotNull { sub ->
             val subStartYM = YearMonth.parse(sub.startYearMonth, DateTimeFormatter.ofPattern("yyyy-MM"))
             val subEndYM = sub.endYearMonth?.let { YearMonth.parse(it, DateTimeFormatter.ofPattern("yyyy-MM")) }
-
-            if (!parsedYearMonth.isBefore(subStartYM) && (subEndYM == null || !parsedYearMonth.isAfter(subEndYM))) {
-                if (!sub.isYearly || sub.billingMonth == parsedYearMonth.monthValue) {
-                    virtuals.add(Transaction(
-                        id = -1000 - sub.id, title = "${sub.name} (サブスク)", amount = sub.amount, isExpense = true,
-                        category = "口座引落", date = finalPaymentDate.toString(), parentTransactionId = null,
-                        isCreditPayment = true, paymentMethod = "現金"
-                    ))
-                }
-            }
+            if (!parsedYearMonth.isBefore(subStartYM) && (subEndYM == null || !parsedYearMonth.isAfter(subEndYM)) && (!sub.isYearly || sub.billingMonth == parsedYearMonth.monthValue)) {
+                Transaction(-1000 - sub.id, "${sub.name} (サブスク)", sub.amount, true, "口座引落", finalPaymentDate.toString(), null, true, "現金", false, null)
+            } else null
         }
-        return virtuals
     }
 
-    // ★修正: カテゴリーではなく paymentMethod を基準にしてクレジット判定を行う
-    fun addTransaction(title: String, amount: Int, isExpense: Boolean, category: String, paymentMethod: String, dateString: String) = viewModelScope.launch {
-        val transaction = Transaction(title = title, amount = amount, isExpense = isExpense, category = category, date = dateString, isCreditPayment = false, paymentMethod = paymentMethod)
+    // ★修正: chargeSourceをDBに保存
+    fun addTransaction(title: String, amount: Int, isExpense: Boolean, category: String, paymentMethod: String, dateString: String, isCharge: Boolean, chargeSource: String? = null) = viewModelScope.launch {
+        val transaction = Transaction(title = title, amount = amount, isExpense = isExpense, category = category, date = dateString, isCreditPayment = false, paymentMethod = paymentMethod, isCharge = isCharge, chargeSource = chargeSource)
         val insertedId = repository.insert(transaction)
-        if (isExpense && paymentMethod == "クレジット") createCreditPaymentData(insertedId.toInt(), title, amount, dateString)
+
+        if (isExpense && paymentMethod == "クレジット" && !isCharge) {
+            createCreditPaymentData(insertedId.toInt(), title, amount, dateString)
+        }
+        if (isCharge && chargeSource == "クレジット") {
+            createCreditPaymentData(insertedId.toInt(), "$title (チャージ分)", amount, dateString)
+        }
     }
 
+    // ★修正: 編集時にチャージ元（chargeSource）を見てクレジット連動を維持する
     fun updateTransaction(transaction: Transaction) = viewModelScope.launch {
         repository.update(transaction)
         val existingPaymentData = repository.getCreditPaymentTransaction(transaction.id)
-        if (transaction.isExpense && transaction.paymentMethod == "クレジット") {
+
+        // クレジットの引き落としデータが必要な条件
+        val needsCreditPayment = (transaction.isExpense && transaction.paymentMethod == "クレジット" && !transaction.isCharge) ||
+                (transaction.isCharge && transaction.chargeSource == "クレジット")
+
+        if (needsCreditPayment) {
             if (existingPaymentData != null) {
                 val paymentDate = calculateCreditPaymentDate(transaction.date)
                 repository.update(existingPaymentData.copy(title = "${transaction.title}（引き落とし）", amount = transaction.amount, date = paymentDate))
             } else {
-                createCreditPaymentData(transaction.id, transaction.title, transaction.amount, transaction.date)
+                val paymentTitle = if (transaction.isCharge) "${transaction.title} (チャージ分)" else transaction.title
+                createCreditPaymentData(transaction.id, paymentTitle, transaction.amount, transaction.date)
             }
         } else {
+            // 現金払いや現金チャージに変更された場合は引き落としデータを削除
             existingPaymentData?.let { repository.delete(it) }
         }
     }
 
-    fun deleteTransaction(transaction: Transaction) = viewModelScope.launch {
-        repository.getCreditPaymentTransaction(transaction.id)?.let { repository.delete(it) }
-        repository.delete(transaction)
-    }
+    fun deleteTransaction(transaction: Transaction) = viewModelScope.launch { repository.getCreditPaymentTransaction(transaction.id)?.let { repository.delete(it) }; repository.delete(transaction) }
 
     private suspend fun createCreditPaymentData(parentId: Int, title: String, amount: Int, dateString: String) {
         val paymentDate = calculateCreditPaymentDate(dateString)
-        repository.insert(Transaction(
-            title = "${title}（引き落とし）", amount = amount, isExpense = true, category = "口座引落",
-            date = paymentDate, parentTransactionId = parentId, isCreditPayment = true, paymentMethod = "現金"
-        ))
+        repository.insert(Transaction(title = "${title}（引き落とし）", amount = amount, isExpense = true, category = "口座引落", date = paymentDate, parentTransactionId = parentId, isCreditPayment = true, paymentMethod = "現金", isCharge = false))
     }
 
     private fun calculateCreditPaymentDate(usageDateString: String): String {
@@ -264,7 +217,9 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         return adjustedDate
     }
 
-    fun updateCategory(category: Category) = viewModelScope.launch { repository.updateCategory(category) }
     fun addCategory(name: String) = viewModelScope.launch { repository.insertCategory(Category(name = name)) }
-    fun deleteCategory(category: Category) = viewModelScope.launch { repository.deleteCategory(category) } // ★保護を全解除
+    fun deleteCategory(category: Category) = viewModelScope.launch { repository.deleteCategory(category) }
+
+    fun addPaymentMethod(name: String) = viewModelScope.launch { repository.insertPaymentMethod(PaymentMethod(name = name)) }
+    fun deletePaymentMethod(method: PaymentMethod) = viewModelScope.launch { if (!method.isDefault) repository.deletePaymentMethod(method) }
 }
