@@ -16,6 +16,10 @@ import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
 import java.time.DayOfWeek
 import java.time.format.DateTimeFormatter
+import org.json.JSONObject
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class TransactionViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -69,6 +73,8 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
                 defaultCategories.forEach { repository.insertCategory(it) }
             }
         }
+
+        fetchHolidays()
     }
 
     fun getTransactionsByMonth(yearMonth: String): Flow<List<Transaction>> {
@@ -175,25 +181,16 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
         return adjustForWeekendAndHoliday(paymentDate, policy).format(formatter)
     }
 
-    // クレジットカードの引き落とし日を計算するロジック（設定値と休日判定を反映）
+    // クレジットカードの引き落とし日を計算するロジック（自動取得した祝日判定を反映）
     private fun adjustForWeekendAndHoliday(date: LocalDate, policy: String): LocalDate {
         var adjustedDate = date
-
-        // （参考）2026年〜2027年の主な祝日リスト（必要に応じて追加・更新してください）
-        val holidays = listOf(
-            LocalDate.of(2026, 10, 12), LocalDate.of(2026, 11, 3), LocalDate.of(2026, 11, 23),
-            LocalDate.of(2027, 1, 1), LocalDate.of(2027, 1, 11), LocalDate.of(2027, 2, 11),
-            LocalDate.of(2027, 2, 23), LocalDate.of(2027, 3, 22), LocalDate.of(2027, 4, 29),
-            LocalDate.of(2027, 5, 3), LocalDate.of(2027, 5, 4), LocalDate.of(2027, 5, 5),
-            LocalDate.of(2027, 7, 19), LocalDate.of(2027, 8, 11), LocalDate.of(2027, 9, 20),
-            LocalDate.of(2027, 9, 23), LocalDate.of(2027, 10, 11), LocalDate.of(2027, 11, 3),
-            LocalDate.of(2027, 11, 23)
-        )
+        // ★ 自動取得して保持している最新の祝日データを読み込む
+        val currentHolidays = _holidays.value
 
         fun isHolidayOrWeekend(d: LocalDate): Boolean {
             return d.dayOfWeek == DayOfWeek.SATURDAY ||
                     d.dayOfWeek == DayOfWeek.SUNDAY ||
-                    holidays.contains(d)
+                    currentHolidays.contains(d) // ★ 取得した祝日データの中に存在するかチェック
         }
 
         // 休日である限り、設定に応じて1日ずつ前(または後ろ)にずらす
@@ -205,6 +202,60 @@ class TransactionViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
         return adjustedDate
+    }
+
+    // ★ 追加1: 自動取得した祝日を保持する変数（既存）
+    private val _holidays = MutableStateFlow<Set<LocalDate>>(emptySet())
+
+    // ▼ これを追加（UIから読み取るための公開用変数）
+    val holidays: StateFlow<Set<LocalDate>> = _holidays
+
+    // ★ 追加2: 祝日自動取得メソッド (キャッシュ機能付き)
+    private fun fetchHolidays() = viewModelScope.launch {
+        try {
+            val jsonString = withContext(Dispatchers.IO) {
+                // APIから最新の祝日リスト（JSON）をダウンロード
+                URL("https://holidays-jp.github.io/api/v1/date.json").readText()
+            }
+
+            // ダウンロードに成功したら、次回のためにスマホ本体に保存（上書き）
+            prefs.edit().putString("saved_holidays_json", jsonString).apply()
+
+            // データを日付のリストに変換して反映
+            _holidays.value = parseHolidaysJson(jsonString)
+
+        } catch (e: Exception) {
+            // 通信に失敗した場合（オフラインなど）は、最後に保存したデータを読み込む
+            val savedJson = prefs.getString("saved_holidays_json", null)
+
+            if (savedJson != null) {
+                // 過去に1度でも取得に成功していれば、そのデータを使う
+                _holidays.value = parseHolidaysJson(savedJson)
+            } else {
+                // インストール直後の初回起動かつオフラインの場合のみ、最低限の予備データを使用
+                _holidays.value = setOf(
+                    LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 12), LocalDate.of(2026, 2, 11),
+                    LocalDate.of(2026, 2, 23), LocalDate.of(2026, 3, 20), LocalDate.of(2026, 4, 29),
+                    LocalDate.of(2026, 5, 3), LocalDate.of(2026, 5, 4), LocalDate.of(2026, 5, 5),
+                    LocalDate.of(2026, 7, 20), LocalDate.of(2026, 8, 11), LocalDate.of(2026, 9, 21),
+                    LocalDate.of(2026, 9, 22), LocalDate.of(2026, 9, 23), LocalDate.of(2026, 10, 12),
+                    LocalDate.of(2026, 11, 3), LocalDate.of(2026, 11, 23)
+                )
+            }
+        }
+    }
+
+    // ★ 追加3: JSONテキストを日付のリストに変換する共通ロジック
+    private fun parseHolidaysJson(jsonString: String): Set<LocalDate> {
+        val jsonObject = JSONObject(jsonString)
+        val dates = mutableSetOf<LocalDate>()
+        val keys = jsonObject.keys()
+        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        while (keys.hasNext()) {
+            val dateStr = keys.next()
+            dates.add(LocalDate.parse(dateStr, formatter))
+        }
+        return dates
     }
 
     fun getTransactionsByYear(year: String): Flow<List<Transaction>> {

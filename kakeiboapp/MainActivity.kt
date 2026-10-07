@@ -347,6 +347,11 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
         currentMonth.format(DateTimeFormatter.ofPattern("yyyy-MM"))
     ).collectAsState(initial = emptyList<Transaction>())
 
+    val aggregateOnUsage by viewModel.aggregateCreditOnUsageDate.collectAsState()
+
+    // ★追加: ViewModelから最新の祝日データを取得
+    val holidays by viewModel.holidays.collectAsState()
+
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -396,9 +401,10 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
         val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
         val calendarItems = List(firstDayOfWeek) { null } + (1..daysInMonth).toList()
 
+        // カレンダーグリッド
         LazyVerticalGrid(
             columns = GridCells.Fixed(7),
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.weight(1f)
         ) {
             items(calendarItems) { day ->
                 if (day != null) {
@@ -410,34 +416,45 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
                     val creditUsageSum = dailyTransactions.filter { it.isExpense && it.category == "クレジット" }.sumOf { it.amount }
                     val creditPaymentSum = dailyTransactions.filter { it.isCreditPayment }.sumOf { it.amount }
 
+                    // ★追加: 日付の色分け判定（日祝=赤、土=青、平日=黒）
+                    val isHoliday = holidays.contains(date)
+                    val isSunday = date.dayOfWeek.value == 7 // 7は日曜日
+                    val isSaturday = date.dayOfWeek.value == 6 // 6は土曜日
+
+                    val dateColor = when {
+                        isSunday || isHoliday -> Color.Red
+                        isSaturday -> Color.Blue
+                        else -> Color.Black
+                    }
+
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth() // 横幅は7等分に広げる
-                            .heightIn(min = 85.dp) // ★固定比率をやめ、内容が溢れたら動的にマスが縦に伸びるようにする
+                            .fillMaxWidth()
+                            .heightIn(min = 85.dp)
                             .padding(2.dp)
                             .background(Color(0xFFF5F5F5), shape = MaterialTheme.shapes.small)
                             .clickable {
                                 selectedDate = date
                                 showDailyDetailDialog = true
                             }
-                            .padding(top = 4.dp, bottom = 4.dp, start = 1.dp, end = 1.dp), // 左右の余白を削って広く使う
+                            .padding(top = 4.dp, bottom = 4.dp, start = 1.dp, end = 1.dp),
                         contentAlignment = Alignment.TopCenter
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(0.dp) // ★項目間の隙間を0にして極限まで詰める
+                            verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
                             Text(
                                 text = day.toString(),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 2.dp) // 日付の下だけ少し隙間をあける
+                                color = dateColor, // ★判定した色を適用
+                                modifier = Modifier.padding(bottom = 2.dp)
                             )
 
-                            // ★金額表示用の専用テキストスタイル（行間を詰める）
                             val amountStyle = androidx.compose.ui.text.TextStyle(
                                 fontSize = 9.sp,
-                                lineHeight = 9.sp, // 行の高さを文字サイズと同じにして余白を消す
+                                lineHeight = 9.sp,
                                 textAlign = TextAlign.Center
                             )
 
@@ -456,9 +473,31 @@ fun CalendarScreen(viewModel: TransactionViewModel, modifier: Modifier = Modifie
                         }
                     }
                 } else {
-                    // 空白マスも高さを合わせる
                     Box(modifier = Modifier.fillMaxWidth().heightIn(min = 85.dp).padding(2.dp))
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // 月間収支サマリー
+        val monthlyIncome = transactions.filter { !it.isExpense }.sumOf { it.amount }
+        val monthlyExpense = transactions.calculateTotalExpense(aggregateOnUsage)
+        val monthlyBalance = monthlyIncome - monthlyExpense
+        val balanceColor = if (monthlyBalance >= 0) Color.Blue else Color.Red
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("${currentMonth.monthValue}月 合計", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("収入: +$monthlyIncome", color = Color.Blue, fontWeight = FontWeight.Bold)
+                    Text("支出: -$monthlyExpense", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
+                Text("収支: $monthlyBalance", color = balanceColor, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }
