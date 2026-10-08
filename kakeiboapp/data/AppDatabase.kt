@@ -5,7 +5,6 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-// ★バージョンを「6」に変更
 @Database(entities = [Transaction::class, Category::class, PaymentMethod::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
@@ -22,7 +21,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "kakeibo_database"
                 )
-                    .fallbackToDestructiveMigration() // バージョン6にリセット
+                    .fallbackToDestructiveMigration() // スキーマ変更時は既存データを消去して作り直す（Migrationは未実装）
                     .build()
                 INSTANCE = instance
                 instance

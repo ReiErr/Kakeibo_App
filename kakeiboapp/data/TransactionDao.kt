@@ -11,7 +11,7 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE date LIKE :year || '%' ORDER BY date ASC, id ASC")
     fun getTransactionsByYear(year: String): Flow<List<Transaction>>
 
-    // ★追加: 残高計算のために全期間の取引を取得する
+    // 残高計算のために全期間の取引を取得する
     @Query("SELECT * FROM transactions")
     fun getAllTransactions(): Flow<List<Transaction>>
 

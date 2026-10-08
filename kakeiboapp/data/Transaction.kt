@@ -13,7 +13,7 @@ data class Transaction(
     val date: String,
     val parentTransactionId: Int? = null,
     val isCreditPayment: Boolean = false,
-    val paymentMethod: String = "現金",
+    val paymentMethod: String = PaymentNames.CASH,
     val isCharge: Boolean = false,
-    val chargeSource: String? = null // ★追加: どこからチャージしたか（現金 or クレジット）を保存
+    val chargeSource: String? = null // チャージ元の支払方法名（チャージ以外は null）
 )

@@ -10,7 +10,7 @@ class TransactionRepository(
     // Transaction
     fun getTransactionsByMonth(yearMonth: String) = transactionDao.getTransactionsByMonth(yearMonth)
     fun getTransactionsByYear(year: String) = transactionDao.getTransactionsByYear(year)
-    val allTransactions: Flow<List<Transaction>> = transactionDao.getAllTransactions() // ★追加
+    val allTransactions: Flow<List<Transaction>> = transactionDao.getAllTransactions() // 全期間の取引（残高計算用）
 
     suspend fun getCreditPaymentTransaction(parentId: Int) = transactionDao.getCreditPaymentTransaction(parentId)
     suspend fun insert(transaction: Transaction) = transactionDao.insert(transaction)
