@@ -24,4 +24,13 @@ interface PaymentMethodDao {
 
     @Query("SELECT COUNT(*) FROM payment_methods")
     suspend fun getCount(): Int
+
+    @Query("SELECT * FROM payment_methods")
+    suspend fun getAllPaymentMethodsSync(): List<PaymentMethod>
+
+    @Query("DELETE FROM payment_methods")
+    suspend fun deleteAllPaymentMethods()
+
+    @Insert
+    suspend fun insertAll(paymentMethods: List<PaymentMethod>)
 }

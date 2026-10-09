@@ -2,6 +2,8 @@ package com.example.kakeiboapp
 
 import org.json.JSONObject
 
+import com.example.kakeiboapp.data.PaymentNames
+
 /**
  * サブスクリプション（月払い／年払い）の登録情報。
  * DBではなく SharedPreferences に JSON で保存する。
@@ -17,7 +19,9 @@ data class Subscription(
     val isYearly: Boolean,
     val billingMonth: Int,
     val startYearMonth: String,
-    val endYearMonth: String? = null
+    val endYearMonth: String? = null,
+    val paymentMethod: String = PaymentNames.CREDIT,
+    val category: String = "その他"
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -27,6 +31,8 @@ data class Subscription(
         put("billingMonth", billingMonth)
         put("startYearMonth", startYearMonth)
         if (endYearMonth != null) put("endYearMonth", endYearMonth)
+        put("paymentMethod", paymentMethod)
+        put("category", category)
     }
 
     companion object {
@@ -37,7 +43,9 @@ data class Subscription(
             isYearly = obj.getBoolean("isYearly"),
             billingMonth = obj.getInt("billingMonth"),
             startYearMonth = obj.optString("startYearMonth", "2000-01"),
-            endYearMonth = if (obj.has("endYearMonth") && !obj.isNull("endYearMonth")) obj.getString("endYearMonth") else null
+            endYearMonth = if (obj.has("endYearMonth") && !obj.isNull("endYearMonth")) obj.getString("endYearMonth") else null,
+            paymentMethod = obj.optString("paymentMethod", PaymentNames.CREDIT),
+            category = obj.optString("category", "その他")
         )
     }
 }

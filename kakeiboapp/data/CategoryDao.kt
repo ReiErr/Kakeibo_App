@@ -23,4 +23,13 @@ interface CategoryDao {
 
     @Query("SELECT COUNT(*) FROM categories")
     suspend fun getCategoryCount(): Int
+
+    @Query("SELECT * FROM categories")
+    suspend fun getAllCategoriesSync(): List<Category>
+
+    @Query("DELETE FROM categories")
+    suspend fun deleteAllCategories()
+
+    @Insert
+    suspend fun insertAll(categories: List<Category>)
 }

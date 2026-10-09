@@ -13,7 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.example.kakeiboapp.ui.theme.KakeiboAppTheme
 
-enum class ScreenType { Calendar, YearlySummary, Settings }
+enum class ScreenType { Calendar, Analysis, YearlySummary, Settings }
 
 class MainActivity : ComponentActivity() {
     private val viewModel: TransactionViewModel by viewModels()
@@ -32,7 +32,8 @@ fun MainAppScreen(viewModel: TransactionViewModel) {
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(icon = { Icon(Icons.Filled.DateRange, "カレンダー") }, label = { Text("カレンダー") }, selected = currentScreen == ScreenType.Calendar, onClick = { currentScreen = ScreenType.Calendar })
-                NavigationBarItem(icon = { Icon(Icons.Filled.Assessment, "年間収支") }, label = { Text("年間収支") }, selected = currentScreen == ScreenType.YearlySummary, onClick = { currentScreen = ScreenType.YearlySummary })
+                NavigationBarItem(icon = { Icon(Icons.Filled.PieChart, "分析") }, label = { Text("分析") }, selected = currentScreen == ScreenType.Analysis, onClick = { currentScreen = ScreenType.Analysis })
+                NavigationBarItem(icon = { Icon(Icons.Filled.Assessment, "収支") }, label = { Text("収支") }, selected = currentScreen == ScreenType.YearlySummary, onClick = { currentScreen = ScreenType.YearlySummary })
                 NavigationBarItem(icon = { Icon(Icons.Filled.Settings, "設定") }, label = { Text("設定") }, selected = currentScreen == ScreenType.Settings, onClick = { currentScreen = ScreenType.Settings })
             }
         }
@@ -40,6 +41,7 @@ fun MainAppScreen(viewModel: TransactionViewModel) {
         Box(modifier = Modifier.padding(innerPadding)) {
             when (currentScreen) {
                 ScreenType.Calendar -> CalendarScreen(viewModel = viewModel)
+                ScreenType.Analysis -> AnalysisScreen(viewModel = viewModel)
                 ScreenType.YearlySummary -> YearlySummaryScreen(viewModel = viewModel)
                 ScreenType.Settings -> SettingsScreen(viewModel = viewModel)
             }
